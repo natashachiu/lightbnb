@@ -89,6 +89,14 @@ const getAllReservations = function(guest_id, limit = 10) {
 
 /// Properties
 
+const paramsCheck = (queryParams) => {
+  if (queryParams.length === 0) {
+    return `WHERE `;
+  } else {
+    return `AND `;
+  }
+};
+
 /**
  * Get all properties.
  * @param {{}} options An object containing query options.
@@ -96,8 +104,53 @@ const getAllReservations = function(guest_id, limit = 10) {
  * @return {Promise<[{}]>}  A promise to the properties.
  */
 const getAllProperties = function(options, limit = 10) {
+
+  const queryParams = [];
+
+  let queryString = `
+   SELECT properties.*, avg(property_reviews.rating) as average_rating
+   FROM properties
+   JOIN property_reviews ON properties.id = property_id
+   `;
+
+  if (options.city) {
+    const firstLetter = options.city.charAt(0).toUpperCase();
+    const remainingLetters = options.city.slice(1).toLowerCase();
+    queryParams.push(`%${firstLetter + remainingLetters}%`);
+    queryString += `WHERE city LIKE $${queryParams.length} `;
+  }
+
+  if (options.owner_id) {
+    queryString += paramsCheck(queryParams);
+    queryParams.push(options.owner_id);
+    queryString += `owner_id = $${queryParams.length} `;
+  }
+  if (options.minimum_price_per_night) {
+    queryString += paramsCheck(queryParams);
+    queryParams.push(options.minimum_price_per_night * 100);
+    queryString += `cost_per_night > $${queryParams.length} `;
+  }
+  if (options.maximum_price_per_night) {
+    queryString += paramsCheck(queryParams);
+    queryParams.push(options.maximum_price_per_night * 100);
+    queryString += `cost_per_night < $${queryParams.length} `;
+  }
+  if (options.minimum_rating) {
+    queryString += paramsCheck(queryParams);
+    queryParams.push(parseInt(options.minimum_rating));
+    queryString += `rating > $${queryParams.length} `;
+  }
+
+  queryParams.push(limit);
+  queryString += `
+  GROUP BY properties.id
+  ORDER BY cost_per_night
+  LIMIT $${queryParams.length};
+  `;
+
+  console.log(queryString, queryParams);
   return pool
-    .query(`SELECT * FROM properties LIMIT $1;`, [limit])
+    .query(queryString, queryParams)
     .then(result => result.rows)
     .catch(err => err.message);
 };
